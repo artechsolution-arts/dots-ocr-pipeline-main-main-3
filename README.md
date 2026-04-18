@@ -91,8 +91,3 @@ Stop with `./stop.sh` (or `Ctrl+C` in the terminal running `start.sh` — the tr
     └── tests/test_metadata.py        # unit tests for pure-logic modules
 ```
 
----
-
-## License
-
-This project incorporates [DotsOCR](https://github.com/rednote-hilab/dots.ocr) — see `dots.ocr LICENSE AGREEMENT`. The rest of the code is under the `LICENSE` at the repo root.
