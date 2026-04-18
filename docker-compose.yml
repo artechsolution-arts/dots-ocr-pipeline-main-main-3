@@ -1,0 +1,71 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+#  On-Prem RAG — Infrastructure Services Only
+#  Mac Studio M3 Ultra · 80-core GPU · 512 GB unified memory
+#
+#  WHY ONLY INFRA HERE:
+#  Docker Desktop on macOS runs inside a Linux VM.
+#  Apple MPS / Metal GPU is NOT exposed to that VM.
+#  Running OCR + Embedding in Docker = CPU only → 5-8x slower.
+#
+#  The API + Worker run natively (start.sh) so they get full MPS access:
+#    DotsOCR  (1.7B VLM)   → MPS  ~1-3s/page  (vs 8-15s CPU)
+#    mxbai embedder         → MPS  ~0.1s/batch (vs 1-2s CPU)
+#
+#  Usage:
+#    ./start.sh          ← single command, starts everything
+#    ./stop.sh           ← clean shutdown
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── Redis — job state, SSE pub/sub, de-duplication fence ─────────────────────
+  redis:
+    image: redis:7-alpine
+    platform: linux/arm64
+    container_name: rag-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --appendonly yes
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - rag-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── RabbitMQ — async job queue (priority / normal / large) ───────────────────
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    platform: linux/arm64
+    container_name: rag-rabbitmq
+    restart: unless-stopped
+    environment:
+      # Tune Erlang schedulers to use 8 cores (leaves headroom for native workers)
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+S 8:8"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # Management UI: http://localhost:15672  (guest / guest)
+    networks:
+      - rag-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  redis-data:
+    name: rag_redis_data
+  rabbitmq-data:
+    name: rag_rabbitmq_data
+
+networks:
+  rag-net:
+    name: rag_pipeline_net
+    driver: bridge
